@@ -1,6 +1,6 @@
 # Dependencies
-server/node_modules/
-client/node_modules/
+src/node_modules/
+eventora/node_modules/
 
 # Environment files
 server/.env
