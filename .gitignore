@@ -1,6 +1,5 @@
-# Dependencies
-server/node_modules/
-client/node_modules/
+# Dependenciesgit
+node_modules
 
 # Environment files
 server/.env
