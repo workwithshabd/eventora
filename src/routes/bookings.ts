@@ -7,6 +7,7 @@ import {
   getBookingById,
   cancelBooking,
   getAllBookings,
+  adminCancelBooking,
 } from "../controllers/bookings.ts";
 
 // Authentication middleware
@@ -66,5 +67,7 @@ router.patch("/:id/cancel", verifyJWT, cancelBooking);
 //
 // Only admins can see all users' bookings.
 router.get("/", verifyJWT, verifyAdmin, getAllBookings);
+
+router.patch("/admin/:id/cancel", verifyJWT, verifyAdmin, adminCancelBooking);
 
 export default router;

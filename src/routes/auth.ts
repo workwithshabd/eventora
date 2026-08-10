@@ -15,7 +15,7 @@ router.post("/verify-otp", verifyOtp);
 // Protected routes
 router.post("/logout", verifyJWT, logOut);
 router.post("/change-password", verifyJWT, changePassword);
-router.put("/me", verifyJWT, getCurrentUser);
+router.get("/me", verifyJWT, getCurrentUser);
 //router.get("/update-account-details", verifyJWT, updateAccountDetails);
 
 // Role routes (Protected)

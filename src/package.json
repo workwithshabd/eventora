@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "nodemon --watch .  --ext ts  --exec tsx  index.ts"
+    "dev": "nodemon --watch .  --ext ts  --exec tsx  index.ts",
+     "seed": "tsx seed.ts"
   },
   "author": "shabd",
   "license": "ISC",

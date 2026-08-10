@@ -9,24 +9,29 @@ const cookieOptions = {
   secure: process.env.NODE_ENV === "production",
   sameSite: "strict" as const,
 };
-
 export const signUp = async (req: Request, res: Response) => {
   try {
-    // Get signup information from the request body
+    console.log("========== SIGNUP START ==========");
+
+    console.log("Request body:", req.body);
+
     const { name, email, password } = req.body;
 
-    // Check that all required fields are provided
     if (!name || !email || !password) {
+      console.log("Missing signup fields");
+
       return res.status(400).json({
         success: false,
         message: "All fields are required",
       });
     }
 
-    // Check whether the user already exists
+    console.log("Checking existing user...");
+
     const existingUser = await user.findOne({ email });
 
-    // Stop signup if the account already exists
+    console.log("Existing user:", existingUser ? "YES" : "NO");
+
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -34,35 +39,39 @@ export const signUp = async (req: Request, res: Response) => {
       });
     }
 
-    // Generate a salt for password hashing
-    const salt = await bcrypt.genSalt(10);
+    console.log("Hashing password...");
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Generate a random 6-digit OTP
+    console.log("Password hashed");
+
     const otp = Math.floor(
       100000 + Math.random() * 900000
     ).toString();
 
-    // Set OTP expiration to 3 minutes from now
     const otpExpiresAt = new Date(
       Date.now() + 3 * 60 * 1000
     );
 
-    // Remove any previous pending signup for this email
+    console.log("Deleting previous OTP...");
+
     await Otp.deleteMany({ email });
 
-    // Store signup information temporarily
-    await Otp.create({
-      name,
-      email,
-      password: hashedPassword,
-      otp,
-      otpExpiresAt,
-    });
+    console.log("Creating OTP...");
 
-    // Send OTP to the user's email
+    await Otp.create({
+  name,
+  email,
+  password: hashedPassword,
+  otp,
+  otpExpiresAt,
+  action: "account-verification",
+});
+
+    console.log("OTP created successfully");
+
+    console.log("Sending email...");
+
     await sendAccountEmail(
       email,
       otp,
@@ -70,32 +79,38 @@ export const signUp = async (req: Request, res: Response) => {
       "Please enter this OTP to complete your registration."
     );
 
-    // Don't create the user yet.
-    // Don't generate access/refresh tokens yet.
+    console.log("Email sent successfully");
+
+    console.log("========== SIGNUP SUCCESS ==========");
+
     return res.status(200).json({
       success: true,
       message: "OTP sent to your email. Please verify your email.",
     });
 
   } catch (error) {
-    // Log the actual server-side error
-    console.error("Signup error:", error);
+    console.error("========== SIGNUP ERROR ==========");
 
-    // Send generic error to the client
+    console.error(error);
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Internal server error",
     });
   }
 };
 
-
 export const verifyOtp = async (req: Request, res: Response) => {
   try {
-    // Get email and OTP from the request body
     const { email, otp } = req.body;
 
-    // Make sure both values were provided
+    // -----------------------------------------
+    // Validate request
+    // -----------------------------------------
+
     if (!email || !otp) {
       return res.status(400).json({
         success: false,
@@ -103,10 +118,15 @@ export const verifyOtp = async (req: Request, res: Response) => {
       });
     }
 
-    // Find the temporary signup information
-    const pendingUser = await Otp.findOne({ email });
+    // -----------------------------------------
+    // Find pending OTP
+    // -----------------------------------------
 
-    // No pending signup found
+    const pendingUser = await Otp.findOne({
+      email,
+      action: "account-verification",
+    });
+
     if (!pendingUser) {
       return res.status(404).json({
         success: false,
@@ -114,18 +134,25 @@ export const verifyOtp = async (req: Request, res: Response) => {
       });
     }
 
-    // Check whether the OTP has expired
+    // -----------------------------------------
+    // Check OTP expiration
+    // -----------------------------------------
+
     if (pendingUser.otpExpiresAt < new Date()) {
-      // Delete expired signup information
-      await Otp.deleteOne({ _id: pendingUser._id });
+      await Otp.deleteOne({
+        _id: pendingUser._id,
+      });
 
       return res.status(400).json({
         success: false,
-        message: "OTP has expired",
+        message: "OTP has expired. Please request a new OTP.",
       });
     }
 
-    // Compare the OTP entered by the user with the stored OTP
+    // -----------------------------------------
+    // Check OTP
+    // -----------------------------------------
+
     if (pendingUser.otp !== otp) {
       return res.status(400).json({
         success: false,
@@ -133,34 +160,65 @@ export const verifyOtp = async (req: Request, res: Response) => {
       });
     }
 
-    // OTP is correct.
-    // NOW create the actual user.
-    const newUser = await user.create({
+    // -----------------------------------------
+    // OTP IS VALID
+    // -----------------------------------------
+    //
+    // IMPORTANT:
+    // Do NOT use user.create() yet.
+    //
+    // We first create the Mongoose document in memory.
+    // This means the user is NOT saved to MongoDB yet.
+    //
+
+    const newUser = new user({
       name: pendingUser.name,
       email: pendingUser.email,
       password: pendingUser.password,
+
+      // IMPORTANT:
+      // User is verified because the OTP was correct.
+      isVerified: true,
     });
 
-    // Generate access token after successful verification
+    // -----------------------------------------
+    // Generate tokens BEFORE saving user
+    // -----------------------------------------
+    //
+    // If ACCESS_TOKEN_SECRET or
+    // REFRESH_TOKEN_SECRET is missing,
+    // this will throw an error.
+    //
+    // Since the user hasn't been saved yet,
+    // no unverified user will remain in MongoDB.
+    //
+
     const accessToken = newUser.generateAccessToken();
 
-    // Generate refresh token after successful verification
     const refreshToken = newUser.generateRefreshToken();
 
-    // Save refresh token in the user document
+    // Store refresh token in the user document
     newUser.refreshToken = refreshToken;
 
-    // Save the user
-    await newUser.save({
-      validateBeforeSave: false,
-    });
+    // -----------------------------------------
+    // NOW save the verified user
+    // -----------------------------------------
 
-    // Delete the temporary OTP/signup data
-    await otp.deleteOne({
+    await newUser.save();
+
+    // -----------------------------------------
+    // Delete OTP only after user was successfully
+    // created and authenticated.
+    // -----------------------------------------
+
+    await Otp.deleteOne({
       _id: pendingUser._id,
     });
 
-    // Return successful response and authenticate the user
+    // -----------------------------------------
+    // Return successful response
+    // -----------------------------------------
+
     return res
       .status(201)
       .cookie("accessToken", accessToken, cookieOptions)
@@ -168,80 +226,168 @@ export const verifyOtp = async (req: Request, res: Response) => {
       .json({
         success: true,
         message: "Email verified and account created successfully",
-        user: newUser,
+        user: {
+          _id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+          role: newUser.role,
+          isVerified: newUser.isVerified,
+        },
       });
 
   } catch (error) {
-    // Log server-side error
     console.error("OTP verification error:", error);
 
-    // Return generic error
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Internal server error",
     });
   }
 };
 
+
+
+
 export const logIn = async (req: Request, res: Response) => {
-  console.log("login controller reached");
+  console.log("========== LOGIN START ==========");
+
   try {
     const { email, password } = req.body;
+
+    console.log("Login email:", email);
+
+    // -----------------------------------------
+    // Validate fields
+    // -----------------------------------------
 
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "all fields are required",
+        message: "All fields are required",
       });
     }
 
-    const existingUser = await user.findOne({ email }).select("+password");
+    // -----------------------------------------
+    // Find user
+    // -----------------------------------------
+
+    const existingUser = await user
+      .findOne({ email })
+      .select("+password");
+
+    console.log(
+      "User found:",
+      existingUser ? "YES" : "NO"
+    );
 
     if (!existingUser) {
-      return res.status(409).json({
+      return res.status(401).json({
         success: false,
-        message: "user does not exist",
+        message: "Email or password is wrong",
       });
     }
+
+    // -----------------------------------------
+    // Check email verification
+    // -----------------------------------------
+
+    if (!existingUser.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email before logging in.",
+      });
+    }
+
+    // -----------------------------------------
+    // Check password
+    // -----------------------------------------
+
+    console.log(
+      "Stored password exists:",
+      existingUser.password ? "YES" : "NO"
+    );
 
     const isPasswordCorrect = await bcrypt.compare(
       password,
-      existingUser.password,
+      existingUser.password
     );
+
+    console.log(
+      "Password correct:",
+      isPasswordCorrect
+    );
+
     if (!isPasswordCorrect) {
-      return res.status(409).json({
+      return res.status(401).json({
         success: false,
-        message: "email or password is wrong",
+        message: "Email or password is wrong",
       });
     }
 
-    const accessToken = existingUser.generateAccessToken();
-    const refreshToken = existingUser.generateRefreshToken();
+    // -----------------------------------------
+    // Generate tokens
+    // -----------------------------------------
+
+    const accessToken =
+      existingUser.generateAccessToken();
+
+    const refreshToken =
+      existingUser.generateRefreshToken();
+
+    // -----------------------------------------
+    // Save refresh token
+    // -----------------------------------------
 
     existingUser.refreshToken = refreshToken;
+
     await existingUser.save({
       validateBeforeSave: false,
     });
 
+    // -----------------------------------------
+    // Successful login
+    // -----------------------------------------
+
+    console.log("========== LOGIN SUCCESS ==========");
+
     return res
       .status(200)
-      .cookie("accessToken", accessToken, cookieOptions)
-      .cookie("refreshToken", refreshToken, cookieOptions)
+      .cookie(
+        "accessToken",
+        accessToken,
+        cookieOptions
+      )
+      .cookie(
+        "refreshToken",
+        refreshToken,
+        cookieOptions
+      )
       .json({
         success: true,
-        message: "User logIn successfully",
+        message: "User logged in successfully",
+
         user: {
           _id: existingUser._id,
           name: existingUser.name,
           email: existingUser.email,
           role: existingUser.role,
+          isVerified: existingUser.isVerified,
         },
       });
+
   } catch (error) {
-    console.log("this message from auth api", error);
+    console.error("========== LOGIN ERROR ==========");
+    console.error(error);
+
     return res.status(500).json({
       success: false,
-      message: "internal server error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Internal server error",
     });
   }
 };

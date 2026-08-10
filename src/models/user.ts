@@ -61,16 +61,47 @@ const userSchema = new Schema<IUser>(
     timestamps: true,
   },
 );
+
+// ======================================================
+// PASSWORD HASHING
+// ======================================================
+//
+// Signup already hashes the password before putting it
+// into the temporary OTP document.
+//
+// Therefore, when the verified user is saved, we must
+// NOT hash an already-hashed bcrypt password again.
+//
+// At the same time, when a password is changed manually,
+// the new plain-text password WILL be hashed here.
+//
+
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
     return;
   }
+
+  // If password is already a bcrypt hash,
+  // don't hash it again.
+  if (
+    this.password.startsWith("$2a$") ||
+    this.password.startsWith("$2b$") ||
+    this.password.startsWith("$2y$")
+  ) {
+    return;
+  }
+
   this.password = await bcrypt.hash(this.password, 10);
 });
+
+// ======================================================
+// ACCESS TOKEN
+// ======================================================
 
 userSchema.methods.generateAccessToken = function (): string {
   const secret = process.env.ACCESS_TOKEN_SECRET;
   const expiresIn = process.env.ACCESS_TOKEN_EXPIRY;
+
   if (!secret) {
     throw new Error("ACCESS_TOKEN_SECRET is missing");
   }
@@ -82,19 +113,19 @@ userSchema.methods.generateAccessToken = function (): string {
   return jwt.sign(
     {
       _id: this._id.toString(),
-
       email: this.email,
-
       role: this.role,
     },
-
     secret,
-
     {
-        expiresIn: expiresIn as StringValue,
+      expiresIn: expiresIn as StringValue,
     },
   );
 };
+
+// ======================================================
+// REFRESH TOKEN
+// ======================================================
 
 userSchema.methods.generateRefreshToken = function (): string {
   const secret = process.env.REFRESH_TOKEN_SECRET;
@@ -103,22 +134,22 @@ userSchema.methods.generateRefreshToken = function (): string {
   if (!secret) {
     throw new Error("REFRESH_TOKEN_SECRET is missing");
   }
+
   if (!expiresIn) {
-    throw new Error("ACCESS_TOKEN_EXPIRY is missing");
+    throw new Error("REFRESH_TOKEN_EXPIRY is missing");
   }
 
   return jwt.sign(
     {
       _id: this._id.toString(),
     },
-
     secret,
-
     {
-        expiresIn: expiresIn as StringValue,
+      expiresIn: expiresIn as StringValue,
     },
   );
 };
 
 const user = model<IUser>("User", userSchema);
+
 export default user;

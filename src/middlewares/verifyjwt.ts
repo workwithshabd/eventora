@@ -7,7 +7,6 @@ import type {
 import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 
-// Define what we expect to find inside the JWT.
 interface JwtPayload {
   _id: string;
 }
@@ -18,53 +17,65 @@ export const verifyJWT = async (
   next: NextFunction,
 ) => {
   try {
-    // Get the access token from the browser cookie.
     const token = req.cookies?.accessToken;
 
-    // If there is no token, the user is not authenticated.
+    console.log("========== VERIFY JWT ==========");
+    console.log("Access token exists:", !!token);
+
     if (!token) {
+      console.log("NO ACCESS TOKEN COOKIE");
+
       return res.status(401).json({
         success: false,
         message: "Access token missing",
       });
     }
 
-    // Verify the JWT using the secret stored in .env.
-    //
-    // If the token is expired, invalid, or modified,
-    // jwt.verify() will throw an error.
+    const secret = process.env.ACCESS_TOKEN_SECRET;
+
+    if (!secret) {
+      console.error("ACCESS_TOKEN_SECRET is missing");
+
+      return res.status(500).json({
+        success: false,
+        message: "Server authentication configuration error",
+      });
+    }
+
     const decoded = jwt.verify(
       token,
-      process.env.ACCESS_TOKEN_SECRET!,
+      secret,
     ) as JwtPayload;
 
-    // Find the user whose ID is stored inside the JWT.
-    //
-    // We don't return password or refreshToken because
-    // they are not needed for authentication here.
-    const currentUser = await User.findById(decoded._id)
-      .select("-password -refreshToken");
+    console.log("JWT decoded:", decoded);
 
-    // The token may be valid but the user may have been
-    // deleted from the database.
-    if (!currentUser) {
+    if (!decoded._id) {
       return res.status(401).json({
         success: false,
         message: "Invalid access token",
       });
     }
 
-    // Attach the authenticated user to the Express request.
-    //
-    // This is where req.user is created.
+    const currentUser = await User.findById(decoded._id)
+      .select("-password -refreshToken");
+
+    if (!currentUser) {
+      console.log("User from token not found");
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid access token",
+      });
+    }
+
+    console.log("Authenticated user:", currentUser.email);
+
     req.user = currentUser;
 
-    // Continue to the next middleware/controller.
     next();
-
   } catch (error) {
-    // Handles expired, invalid, malformed, or otherwise
-    // unusable JWTs.
+    console.error("JWT verification failed:", error);
+
     return res.status(401).json({
       success: false,
       message: "Invalid or expired access token",

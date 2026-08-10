@@ -9,6 +9,12 @@ import dotenv from "dotenv";
 // Load environment variables from the .env file.
 dotenv.config();
 
+console.log("EMAIL_USER:", process.env.EMAIL_USER);
+console.log(
+  "EMAIL_PASS:",
+  process.env.EMAIL_PASS ? "LOADED" : "MISSING"
+);
+
 // Create a Nodemailer transporter.
 // The transporter is responsible for connecting to Gmail
 // and sending emails using the credentials provided below.

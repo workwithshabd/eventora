@@ -398,3 +398,62 @@ export const getAllBookings = async (
     });
   }
 };
+
+
+export const adminCancelBooking = async (
+  req: Request,
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+
+    const booking = await Booking.findById(id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: "Booking not found",
+      });
+    }
+
+    if (booking.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Booking is already cancelled",
+      });
+    }
+
+    const event = await Event.findById(booking.event);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: "Event not found",
+      });
+    }
+
+    // Return the booked seats to the event.
+    event.availableSeats += booking.quantity;
+
+    await event.save();
+
+    // Cancel the booking.
+    booking.status = "cancelled";
+
+    await booking.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking cancelled by admin",
+      booking,
+    });
+
+  } catch (error) {
+    console.error("Admin cancel booking error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};
