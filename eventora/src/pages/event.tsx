@@ -5,6 +5,7 @@ import {
   FaMapMarkerAlt,
   FaChair,
   FaMoneyBillWave,
+  FaTimesCircle,
 } from "react-icons/fa";
 
 import api from "../utils/axios";
@@ -23,23 +24,41 @@ type Event = {
   image?: string;
 };
 
+type Booking = {
+  _id: string;
+  event:
+    | string
+    | {
+        _id: string;
+      };
+  quantity: number;
+  ticketPrice: number;
+  totalPrice: number;
+  status: "confirmed" | "cancelled";
+};
+
 function EventDetail() {
   const { id } = useParams<{ id: string }>();
-
   const navigate = useNavigate();
 
   const { user, loading: authLoading } = useAuth();
 
   const [event, setEvent] = useState<Event | null>(null);
 
+  const [booking, setBooking] = useState<Booking | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [bookingLoading, setBookingLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
-  const [otp, setOtp] = useState("");
-  const [showOTP, setShowOTP] = useState(false);
+  const [quantity, setQuantity] = useState(1);
 
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+
+  // ======================================================
+  // FETCH EVENT
+  // ======================================================
 
   useEffect(() => {
     async function fetchEvent() {
@@ -68,6 +87,59 @@ function EventDetail() {
     fetchEvent();
   }, [id]);
 
+  // ======================================================
+  // FETCH USER'S BOOKINGS
+  // ======================================================
+
+  useEffect(() => {
+    async function fetchMyBooking() {
+      if (!user || !id) {
+        setBooking(null);
+        return;
+      }
+
+      try {
+        const response = await api.get("/bookings/my");
+
+        const bookings: Booking[] =
+          response.data.bookings ?? [];
+
+        const existingBooking = bookings.find(
+          (item) => {
+            const eventId =
+              typeof item.event === "string"
+                ? item.event
+                : item.event._id;
+
+            return (
+              eventId === id &&
+              item.status === "confirmed"
+            );
+          },
+        );
+
+        setBooking(existingBooking ?? null);
+      } catch (error) {
+        console.error(
+          "Failed to load user bookings:",
+          error,
+        );
+
+        // Do not block the event page if booking
+        // history fails to load.
+        setBooking(null);
+      }
+    }
+
+    if (!authLoading) {
+      fetchMyBooking();
+    }
+  }, [user, id, authLoading]);
+
+  // ======================================================
+  // BOOK EVENT
+  // ======================================================
+
   async function handleBooking() {
     if (!user) {
       navigate("/login");
@@ -78,61 +150,138 @@ function EventDetail() {
       return;
     }
 
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
+      setError(
+        "You must book at least one ticket.",
+      );
+      return;
+    }
+
+    if (
+      quantity > event.availableSeats
+    ) {
+      setError(
+        `Only ${event.availableSeats} ticket(s) are available.`,
+      );
+      return;
+    }
+
     setBookingLoading(true);
     setError("");
     setSuccessMsg("");
 
     try {
-      /*
-       * First click:
-       * Send OTP to the user's email.
-       */
-      if (!showOTP) {
-        await api.post("/bookings/send-otp");
-
-        setShowOTP(true);
-
-        setSuccessMsg(
-          "OTP sent to your email. Please enter it to confirm your booking."
-        );
-
-        return;
-      }
-
-      /*
-       * Second step:
-       * Send event ID + OTP to backend.
-       */
-      await api.post("/bookings", {
-        eventId: event._id,
-        otp,
-      });
-
-      setSuccessMsg(
-        "Booking requested! Awaiting admin confirmation."
+      const response = await api.post(
+        `/bookings/${event._id}`,
+        {
+          quantity,
+        },
       );
 
-      setShowOTP(false);
-      setOtp("");
+      const newBooking =
+        response.data.booking;
 
-      /*
-       * Get the latest seat count from the backend.
-       */
-      const response = await api.get(`/events/${event._id}`);
+      setBooking(newBooking);
 
-      setEvent(response.data.event ?? response.data);
+      setSuccessMsg(
+        "Event booked successfully! A confirmation email has been sent to your email address.",
+      );
+
+      setQuantity(1);
+
+      // Refresh event so available seats update.
+      const eventResponse =
+        await api.get(
+          `/events/${event._id}`,
+        );
+
+      setEvent(
+        eventResponse.data.event ??
+          eventResponse.data,
+      );
 
     } catch (error: any) {
-      console.error("Booking failed:", error);
+      console.error(
+        "Booking failed:",
+        error,
+      );
 
       setError(
         error.response?.data?.message ||
-          "Booking failed. Please try again."
+          "Booking failed. Please try again.",
       );
     } finally {
       setBookingLoading(false);
     }
   }
+
+  // ======================================================
+  // CANCEL BOOKING
+  // ======================================================
+
+  async function handleCancelBooking() {
+    if (!booking) {
+      return;
+    }
+
+    const confirmed =
+      window.confirm(
+        "Are you sure you want to cancel this booking?",
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCancelLoading(true);
+    setError("");
+    setSuccessMsg("");
+
+    try {
+      await api.patch(
+        `/bookings/${booking._id}/cancel`,
+      );
+
+      setBooking(null);
+
+      setSuccessMsg(
+        "Booking cancelled successfully. Your tickets have been returned to the event.",
+      );
+
+      // Refresh event so available seats update.
+      if (event) {
+        const response =
+          await api.get(
+            `/events/${event._id}`,
+          );
+
+        setEvent(
+          response.data.event ??
+            response.data,
+        );
+      }
+
+    } catch (error: any) {
+      console.error(
+        "Cancel booking failed:",
+        error,
+      );
+
+      setError(
+        error.response?.data?.message ||
+          "Failed to cancel booking. Please try again.",
+      );
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  // ======================================================
+  // LOADING
+  // ======================================================
 
   if (authLoading || loading) {
     return (
@@ -142,6 +291,10 @@ function EventDetail() {
     );
   }
 
+  // ======================================================
+  // EVENT NOT FOUND
+  // ======================================================
+
   if (!event) {
     return (
       <div className="text-center py-20 text-xl text-red-500">
@@ -150,15 +303,19 @@ function EventDetail() {
     );
   }
 
-  const isSoldOut = event.availableSeats <= 0;
+  const isSoldOut =
+    event.availableSeats <= 0;
 
-  const bookingCompleted =
-    successMsg.includes("Booking requested");
+  const totalPrice =
+    event.ticketPrice * quantity;
 
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden mt-8">
 
-      {/* Event Image */}
+      {/* ==================================================
+          EVENT IMAGE
+      ================================================== */}
+
       {event.image ? (
         <img
           src={event.image}
@@ -175,7 +332,10 @@ function EventDetail() {
 
         <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-6">
 
-          {/* Event Information */}
+          {/* ==================================================
+              EVENT INFORMATION
+          ================================================== */}
+
           <div>
 
             <div className="inline-block bg-gray-200 text-gray-800 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide mb-3">
@@ -192,7 +352,10 @@ function EventDetail() {
 
           </div>
 
-          {/* Booking Card */}
+          {/* ==================================================
+              BOOKING CARD
+          ================================================== */}
+
           <div className="bg-gray-50 p-6 rounded-xl border border-gray-100 min-w-[300px] w-full md:w-auto shrink-0 shadow-sm">
 
             <h3 className="text-xl font-bold text-gray-800 mb-6">
@@ -201,7 +364,8 @@ function EventDetail() {
 
             <div className="space-y-4 mb-8">
 
-              {/* Price */}
+              {/* PRICE */}
+
               <div className="flex items-center gap-4 text-gray-600">
 
                 <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-900 shrink-0">
@@ -214,7 +378,6 @@ function EventDetail() {
                   </p>
 
                   <p className="font-bold text-gray-800 text-lg">
-
                     {event.ticketPrice === 0 ? (
                       <span className="text-green-500">
                         Free
@@ -222,13 +385,13 @@ function EventDetail() {
                     ) : (
                       `₹${event.ticketPrice}`
                     )}
-
                   </p>
                 </div>
 
               </div>
 
-              {/* Availability */}
+              {/* AVAILABILITY */}
+
               <div className="flex items-center gap-4 text-gray-600">
 
                 <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-900 shrink-0">
@@ -241,7 +404,6 @@ function EventDetail() {
                   </p>
 
                   <p className="font-bold text-gray-800">
-
                     <span
                       className={
                         event.availableSeats < 10
@@ -252,13 +414,13 @@ function EventDetail() {
                       {event.availableSeats}
                     </span>{" "}
                     / {event.totalSeats}
-
                   </p>
                 </div>
 
               </div>
 
-              {/* Date */}
+              {/* DATE */}
+
               <div className="flex items-center gap-4 text-gray-600">
 
                 <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-900 shrink-0">
@@ -272,14 +434,15 @@ function EventDetail() {
 
                   <p className="font-bold text-gray-800">
                     {new Date(
-                      event.date
+                      event.date,
                     ).toLocaleDateString()}
                   </p>
                 </div>
 
               </div>
 
-              {/* Location */}
+              {/* LOCATION */}
+
               <div className="flex items-center gap-4 text-gray-600">
 
                 <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-900 shrink-0">
@@ -300,71 +463,174 @@ function EventDetail() {
 
             </div>
 
-            {/* OTP */}
-            {showOTP && (
-              <div className="mb-4">
+            {/* ==================================================
+                EXISTING BOOKING
+            ================================================== */}
 
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Enter OTP to Confirm
-                </label>
+            {booking && (
+              <div className="mb-6 p-5 bg-green-50 border border-green-200 rounded-xl">
 
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="6-digit code"
-                  maxLength={6}
-                  value={otp}
-                  onChange={(e) => {
-                    const value = e.target.value
-                      .replace(/\D/g, "")
-                      .slice(0, 6);
+                <div className="flex items-center gap-3 mb-3">
 
-                    setOtp(value);
-                  }}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-gray-700 transition shadow-sm font-bold tracking-widest text-center text-lg"
-                />
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                    ✓
+                  </div>
+
+                  <div>
+                    <p className="font-bold text-green-800">
+                      You are registered
+                    </p>
+
+                    <p className="text-sm text-green-700">
+                      Your booking is confirmed.
+                    </p>
+                  </div>
+
+                </div>
+
+                <div className="text-sm text-green-800 space-y-1">
+
+                  <p>
+                    Tickets:{" "}
+                    <strong>
+                      {booking.quantity}
+                    </strong>
+                  </p>
+
+                  <p>
+                    Total:{" "}
+                    <strong>
+                      ₹{booking.totalPrice}
+                    </strong>
+                  </p>
+
+                </div>
+
+                <button
+                  onClick={handleCancelBooking}
+                  disabled={cancelLoading}
+                  className="mt-4 w-full py-3 px-4 rounded-xl font-bold text-red-600 bg-white border border-red-200 hover:bg-red-50 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <FaTimesCircle />
+
+                  {cancelLoading
+                    ? "Cancelling..."
+                    : "Cancel Booking"}
+                </button>
 
               </div>
             )}
 
-            {/* Booking Button */}
-            <button
-              onClick={handleBooking}
-              disabled={
-                isSoldOut ||
-                bookingLoading ||
-                bookingCompleted ||
-                (showOTP && otp.length !== 6)
-              }
-              className={`w-full py-4 px-6 rounded-xl font-bold text-lg transition shadow-lg ${
-                isSoldOut ||
-                bookingCompleted ||
-                (showOTP && otp.length !== 6)
-                  ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                  : "bg-gray-900 hover:bg-black text-white hover:shadow-xl hover:-translate-y-1"
-              }`}
-            >
-              {bookingLoading
-                ? "Processing..."
-                : bookingCompleted
-                ? "Request Sent"
-                : showOTP
-                ? "Verify OTP & Confirm"
-                : isSoldOut
-                ? "Sold Out"
-                : "Confirm Registration"}
-            </button>
+            {/* ==================================================
+                NEW BOOKING
+            ================================================== */}
 
-            {/* Error */}
+            {!booking && !isSoldOut && (
+              <>
+                {/* QUANTITY */}
+
+                <div className="mb-4">
+
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Number of Tickets
+                  </label>
+
+                  <input
+                    type="number"
+                    min={1}
+                    max={event.availableSeats}
+                    value={quantity}
+                    disabled={bookingLoading}
+                    onChange={(e) => {
+                      const value =
+                        Number(
+                          e.target.value,
+                        );
+
+                      if (
+                        Number.isInteger(
+                          value,
+                        ) &&
+                        value >= 1 &&
+                        value <=
+                          event.availableSeats
+                      ) {
+                        setQuantity(value);
+                        setError("");
+                      }
+                    }}
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-gray-700 transition shadow-sm font-bold text-center"
+                  />
+
+                  <p className="text-xs text-gray-500 mt-2">
+                    Maximum{" "}
+                    {event.availableSeats}{" "}
+                    tickets available.
+                  </p>
+
+                </div>
+
+                {/* TOTAL */}
+
+                <div className="mb-6 p-4 bg-white rounded-xl border border-gray-200">
+
+                  <div className="flex justify-between items-center">
+
+                    <span className="font-semibold text-gray-600">
+                      Total
+                    </span>
+
+                    <span className="text-xl font-bold text-gray-900">
+                      ₹{totalPrice}
+                    </span>
+
+                  </div>
+
+                </div>
+
+                {/* BOOK BUTTON */}
+
+                <button
+                  onClick={handleBooking}
+                  disabled={bookingLoading}
+                  className="w-full py-4 px-6 rounded-xl font-bold text-lg transition shadow-lg bg-gray-900 hover:bg-black text-white hover:shadow-xl hover:-translate-y-1 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:transform-none"
+                >
+                  {bookingLoading
+                    ? "Booking..."
+                    : "Book Event"}
+                </button>
+              </>
+            )}
+
+            {/* ==================================================
+                SOLD OUT
+            ================================================== */}
+
+            {!booking && isSoldOut && (
+              <button
+                disabled
+                className="w-full py-4 px-6 rounded-xl font-bold text-lg bg-gray-300 text-gray-500 cursor-not-allowed"
+              >
+                Sold Out
+              </button>
+            )}
+
+            {/* ==================================================
+                ERROR
+            ================================================== */}
+
             {error && (
-              <p className="text-red-500 mt-4 text-center font-medium bg-red-50 p-2 rounded">
+              <p className="text-red-500 mt-4 text-center font-medium bg-red-50 p-3 rounded">
                 {error}
               </p>
             )}
 
-            {/* Success */}
+            {/* ==================================================
+                SUCCESS
+            ================================================== */}
+
             {successMsg && (
-              <p className="text-green-600 mt-4 text-center font-medium bg-green-50 p-2 rounded">
+              <p className="text-green-600 mt-4 text-center font-medium bg-green-50 p-3 rounded">
                 {successMsg}
               </p>
             )}

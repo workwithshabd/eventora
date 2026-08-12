@@ -46,6 +46,7 @@ const userSchema = new Schema<IUser>(
       type: String,
       enum: ["user", "admin"],
       default: "user",
+      trim: true,
     },
 
     isVerified: {
@@ -65,24 +66,13 @@ const userSchema = new Schema<IUser>(
 // ======================================================
 // PASSWORD HASHING
 // ======================================================
-//
-// Signup already hashes the password before putting it
-// into the temporary OTP document.
-//
-// Therefore, when the verified user is saved, we must
-// NOT hash an already-hashed bcrypt password again.
-//
-// At the same time, when a password is changed manually,
-// the new plain-text password WILL be hashed here.
-//
 
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
     return;
   }
 
-  // If password is already a bcrypt hash,
-  // don't hash it again.
+  // Don't hash an already-hashed bcrypt password.
   if (
     this.password.startsWith("$2a$") ||
     this.password.startsWith("$2b$") ||
@@ -114,7 +104,7 @@ userSchema.methods.generateAccessToken = function (): string {
     {
       _id: this._id.toString(),
       email: this.email,
-      role: this.role,
+      role: this.role.trim(),
     },
     secret,
     {
@@ -149,6 +139,10 @@ userSchema.methods.generateRefreshToken = function (): string {
     },
   );
 };
+
+// ======================================================
+// MODEL
+// ======================================================
 
 const user = model<IUser>("User", userSchema);
 

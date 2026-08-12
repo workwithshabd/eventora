@@ -55,6 +55,7 @@ const otpSchema = new Schema<IOtp>(
     otp: {
       type: String,
       required: true,
+      expires:0, // This field will be automatically removed after the specified time
     },
 
     // Store what the OTP is being used for

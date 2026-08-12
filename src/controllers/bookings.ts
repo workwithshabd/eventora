@@ -5,24 +5,28 @@ import Event from "../models/event.js";
 
 import { sendBookingEmail } from "../utils/mail.js";
 
-
 // ======================================================
 // CREATE BOOKING
 // ======================================================
 //
 // POST /api/bookings/:eventId
 //
+// Body:
+// {
+//   quantity: 1
+// }
+//
 // User must be logged in.
 //
 // Flow:
-// 1. Check authentication
+// 1. Verify authentication
 // 2. Get event
-// 3. Validate ticket quantity
+// 3. Get quantity
 // 4. Check available seats
-// 5. Calculate total price
+// 5. Calculate price
 // 6. Create booking
 // 7. Reduce available seats
-// 8. Send confirmation email
+// 8. Send booking confirmation email
 //
 
 export const createBooking = async (
@@ -30,9 +34,10 @@ export const createBooking = async (
   res: Response,
 ) => {
   try {
-    // Make sure the user is authenticated.
-    //
-    // verifyJWT should have added req.user.
+    // --------------------------------------------------
+    // 1. Check authentication
+    // --------------------------------------------------
+
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -40,37 +45,42 @@ export const createBooking = async (
       });
     }
 
-    // Get event ID from URL.
+    // --------------------------------------------------
+    // 2. Get event ID from URL
+    // --------------------------------------------------
+
     const { eventId } = req.params;
 
-    // Get ticket quantity from request body.
-    const { quantity } = req.body;
-
-    // Check whether quantity was provided.
-    if (quantity === undefined) {
+    if (!eventId) {
       return res.status(400).json({
         success: false,
-        message: "Ticket quantity is required",
+        message: "Event ID is required",
       });
     }
 
-    // Quantity must be a positive integer.
-    if (!Number.isInteger(quantity) || quantity < 1) {
+    // --------------------------------------------------
+    // 3. Get quantity from request body
+    // --------------------------------------------------
+
+    const { quantity = 1 } = req.body ?? {};
+
+    // We currently allow one or more tickets.
+    if (
+      !Number.isInteger(quantity) ||
+      quantity < 1
+    ) {
       return res.status(400).json({
         success: false,
         message: "Quantity must be a positive integer",
       });
     }
 
-    // Get the authenticated user's ID.
-    //
-    // We NEVER take the user ID from req.body.
-    const userId = req.user._id;
+    // --------------------------------------------------
+    // 4. Find event
+    // --------------------------------------------------
 
-    // Find the event.
     const event = await Event.findById(eventId);
 
-    // Event doesn't exist.
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -78,59 +88,81 @@ export const createBooking = async (
       });
     }
 
-    // Check whether enough seats are available.
+    // --------------------------------------------------
+    // 5. Check available seats
+    // --------------------------------------------------
+
     if (event.availableSeats < quantity) {
       return res.status(400).json({
         success: false,
-        message: `Only ${event.availableSeats} seats are available`,
+        message: `Only ${event.availableSeats} seat(s) are available`,
       });
     }
 
-    // Get the current event price.
-    //
-    // Never trust the price sent by the frontend.
+    // --------------------------------------------------
+    // 6. Calculate price
+    // --------------------------------------------------
+
+    // NEVER trust price from frontend.
     const ticketPrice = event.price;
 
-    // Calculate total booking price.
-    const totalPrice = ticketPrice * quantity;
+    const totalPrice =
+      ticketPrice * quantity;
 
-    // Create the booking.
+    // --------------------------------------------------
+    // 7. Create booking
+    // --------------------------------------------------
+
     const booking = await Booking.create({
-      // Authenticated user
-      user: userId,
-
-      // Event being booked
+      user: req.user._id,
       event: event._id,
-
-      // Number of tickets
       quantity,
-
-      // Price at time of booking
       ticketPrice,
-
-      // Total amount
       totalPrice,
-
-      // Booking status
       status: "confirmed",
     });
 
-    // Reduce available seats.
+    // --------------------------------------------------
+    // 8. Reduce available seats
+    // --------------------------------------------------
+
     event.availableSeats -= quantity;
 
-    // Save updated event.
     await event.save();
 
-    // Send booking confirmation email.
-    await sendBookingEmail(
-      req.user.email,
-      req.user.name,
-      event.title,
-      `You booked ${quantity} ticket(s).
-Total amount: ₹${totalPrice}.`,
-    );
+    // --------------------------------------------------
+    // 9. Send confirmation email
+    // --------------------------------------------------
 
-    // Return successful response.
+    try {
+      await sendBookingEmail(
+        req.user.email,
+        req.user.name,
+        event.title,
+        `Your booking has been confirmed.
+
+Event: ${event.title}
+Tickets: ${quantity}
+Ticket price: ₹${ticketPrice}
+Total amount: ₹${totalPrice}
+
+Thank you for booking with Eventora.`,
+      );
+    } catch (emailError) {
+      // Email failure should NOT undo the booking.
+      //
+      // The booking has already been successfully
+      // created, so only log the email problem.
+      console.error(
+        "Booking created, but confirmation email failed:",
+        emailError,
+      );
+    }
+
+    // --------------------------------------------------
+    // 10. Send response
+    // --------------------------------------------------
+
     return res.status(201).json({
       success: true,
       message: "Event booked successfully",
@@ -138,8 +170,10 @@ Total amount: ₹${totalPrice}.`,
     });
 
   } catch (error) {
-    // Log actual error on server.
-    console.error("Create booking error:", error);
+    console.error(
+      "Create booking error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -155,15 +189,12 @@ Total amount: ₹${totalPrice}.`,
 //
 // GET /api/bookings/my
 //
-// Returns bookings belonging only to the logged-in user.
-//
 
 export const getMyBookings = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    // Check authentication.
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -171,19 +202,12 @@ export const getMyBookings = async (
       });
     }
 
-    // Get logged-in user's ID.
-    const userId = req.user._id;
-
-    // Find bookings belonging to this user.
     const bookings = await Booking.find({
-      user: userId,
+      user: req.user._id,
     })
-      // Replace event ObjectId with event information.
       .populate("event")
-      // Newest bookings first.
       .sort({ createdAt: -1 });
 
-    // Return bookings.
     return res.status(200).json({
       success: true,
       count: bookings.length,
@@ -191,7 +215,10 @@ export const getMyBookings = async (
     });
 
   } catch (error) {
-    console.error("Get my bookings error:", error);
+    console.error(
+      "Get my bookings error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -207,15 +234,12 @@ export const getMyBookings = async (
 //
 // GET /api/bookings/:id
 //
-// A user can only see their own booking.
-//
 
 export const getBookingById = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    // Check authentication.
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -223,19 +247,13 @@ export const getBookingById = async (
       });
     }
 
-    // Get booking ID from URL.
     const { id } = req.params;
 
-    // Get logged-in user's ID.
-    const userId = req.user._id;
-
-    // Find booking belonging to this user.
     const booking = await Booking.findOne({
       _id: id,
-      user: userId,
+      user: req.user._id,
     }).populate("event");
 
-    // Booking doesn't exist or belongs to another user.
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -243,14 +261,16 @@ export const getBookingById = async (
       });
     }
 
-    // Return booking.
     return res.status(200).json({
       success: true,
       booking,
     });
 
   } catch (error) {
-    console.error("Get booking error:", error);
+    console.error(
+      "Get booking error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -266,15 +286,12 @@ export const getBookingById = async (
 //
 // PATCH /api/bookings/:id/cancel
 //
-// Cancelling a booking returns the tickets to the event.
-//
 
 export const cancelBooking = async (
   req: Request,
   res: Response,
 ) => {
   try {
-    // Check authentication.
     if (!req.user) {
       return res.status(401).json({
         success: false,
@@ -282,19 +299,13 @@ export const cancelBooking = async (
       });
     }
 
-    // Get booking ID.
     const { id } = req.params;
 
-    // Get logged-in user's ID.
-    const userId = req.user._id;
-
-    // Find the user's booking.
     const booking = await Booking.findOne({
       _id: id,
-      user: userId,
+      user: req.user._id,
     });
 
-    // Booking doesn't exist.
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -302,7 +313,6 @@ export const cancelBooking = async (
       });
     }
 
-    // Prevent cancelling an already cancelled booking.
     if (booking.status === "cancelled") {
       return res.status(400).json({
         success: false,
@@ -310,10 +320,10 @@ export const cancelBooking = async (
       });
     }
 
-    // Find the event.
-    const event = await Event.findById(booking.event);
+    const event = await Event.findById(
+      booking.event,
+    );
 
-    // Event doesn't exist.
     if (!event) {
       return res.status(404).json({
         success: false,
@@ -321,19 +331,16 @@ export const cancelBooking = async (
       });
     }
 
-    // Return tickets to available seats.
+    // Return tickets to event.
     event.availableSeats += booking.quantity;
 
-    // Save event.
     await event.save();
 
-    // Mark booking as cancelled.
+    // Cancel booking.
     booking.status = "cancelled";
 
-    // Save booking.
     await booking.save();
 
-    // Return successful response.
     return res.status(200).json({
       success: true,
       message: "Booking cancelled successfully",
@@ -341,7 +348,10 @@ export const cancelBooking = async (
     });
 
   } catch (error) {
-    console.error("Cancel booking error:", error);
+    console.error(
+      "Cancel booking error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -357,10 +367,7 @@ export const cancelBooking = async (
 //
 // GET /api/bookings
 //
-// ADMIN ONLY.
-//
-// Your route should use:
-// verifyJWT → isAdmin → getAllBookings
+// ADMIN ONLY
 //
 
 export const getAllBookings = async (
@@ -368,21 +375,17 @@ export const getAllBookings = async (
   res: Response,
 ) => {
   try {
-    // Find all bookings.
     const bookings = await Booking.find()
-      // Include user name and email.
-      .populate("user", "name email")
-
-      // Include useful event information.
+      .populate(
+        "user",
+        "name email",
+      )
       .populate(
         "event",
         "title date location price",
       )
-
-      // Newest bookings first.
       .sort({ createdAt: -1 });
 
-    // Return bookings.
     return res.status(200).json({
       success: true,
       count: bookings.length,
@@ -390,7 +393,10 @@ export const getAllBookings = async (
     });
 
   } catch (error) {
-    console.error("Get all bookings error:", error);
+    console.error(
+      "Get all bookings error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,
@@ -399,6 +405,13 @@ export const getAllBookings = async (
   }
 };
 
+
+// ======================================================
+// ADMIN CANCEL BOOKING
+// ======================================================
+//
+// PATCH /api/bookings/admin/:id/cancel
+//
 
 export const adminCancelBooking = async (
   req: Request,
@@ -423,7 +436,9 @@ export const adminCancelBooking = async (
       });
     }
 
-    const event = await Event.findById(booking.event);
+    const event = await Event.findById(
+      booking.event,
+    );
 
     if (!event) {
       return res.status(404).json({
@@ -432,12 +447,12 @@ export const adminCancelBooking = async (
       });
     }
 
-    // Return the booked seats to the event.
+    // Return tickets.
     event.availableSeats += booking.quantity;
 
     await event.save();
 
-    // Cancel the booking.
+    // Cancel booking.
     booking.status = "cancelled";
 
     await booking.save();
@@ -449,7 +464,10 @@ export const adminCancelBooking = async (
     });
 
   } catch (error) {
-    console.error("Admin cancel booking error:", error);
+    console.error(
+      "Admin cancel booking error:",
+      error,
+    );
 
     return res.status(500).json({
       success: false,

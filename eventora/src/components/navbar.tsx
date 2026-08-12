@@ -53,7 +53,9 @@ function Navbar() {
                   }
                   className="text-gray-200 hover:text-white transition"
                 >
-                  Dashboard
+                  {user.role === "admin"
+                    ? "Admin Dashboard"
+                    : "Dashboard"}
                 </Link>
 
                 {/* PROFILE */}

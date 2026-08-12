@@ -4,6 +4,10 @@ import { useNavigate } from "react-router-dom";
 import api from "../utils/axios";
 import { useAuth } from "../context/authcontext.tsx";
 
+// ======================================================
+// TYPES
+// ======================================================
+
 type Event = {
   _id: string;
   title: string;
@@ -13,7 +17,7 @@ type Event = {
   category: string;
   totalSeats: number;
   availableSeats: number;
-  ticketPrice: number;
+  price: number;
   image?: string;
 };
 
@@ -26,18 +30,22 @@ type BookingUser = {
 type BookingEvent = {
   _id: string;
   title: string;
-  totalSeats: number;
-  availableSeats: number;
+  date: string;
+  location: string;
+  price: number;
+  totalSeats?: number;
+  availableSeats?: number;
 };
 
 type Booking = {
   _id: string;
-  userId?: BookingUser;
-  eventId?: BookingEvent;
-  amount: number;
-  status: "pending" | "confirmed" | "cancelled";
-  paymentStatus: "paid" | "not_paid";
-  bookedAt: string;
+  user: BookingUser;
+  event: BookingEvent;
+  quantity: number;
+  ticketPrice: number;
+  totalPrice: number;
+  status: "confirmed" | "cancelled";
+  createdAt: string;
 };
 
 type EventFormData = {
@@ -62,6 +70,10 @@ const initialFormData: EventFormData = {
   image: "",
 };
 
+// ======================================================
+// ADMIN DASHBOARD
+// ======================================================
+
 function AdminDashboard() {
   const { user, loading: authLoading } = useAuth();
 
@@ -72,10 +84,15 @@ function AdminDashboard() {
 
   const [loading, setLoading] = useState(true);
 
-  const [showEventForm, setShowEventForm] = useState(false);
+  const [showEventForm, setShowEventForm] =
+    useState(false);
 
   const [formData, setFormData] =
     useState<EventFormData>(initialFormData);
+
+  // ======================================================
+  // CHECK ADMIN + FETCH DATA
+  // ======================================================
 
   useEffect(() => {
     if (authLoading) {
@@ -95,6 +112,10 @@ function AdminDashboard() {
     fetchData();
   }, [user, authLoading, navigate]);
 
+  // ======================================================
+  // FETCH EVENTS + BOOKINGS
+  // ======================================================
+
   async function fetchData() {
     try {
       setLoading(true);
@@ -105,14 +126,36 @@ function AdminDashboard() {
           api.get("/bookings"),
         ]);
 
-      setEvents(eventsResponse.data.events);
-      setBookings(bookingsResponse.data.bookings);
-    } catch (error) {
-      console.error("Error fetching admin data:", error);
+      console.log(
+        "Admin events:",
+        eventsResponse.data
+      );
+
+      console.log(
+        "Admin bookings:",
+        bookingsResponse.data
+      );
+
+      setEvents(
+        eventsResponse.data.events || []
+      );
+
+      setBookings(
+        bookingsResponse.data.bookings || []
+      );
+    } catch (error: any) {
+      console.error(
+        "Error fetching admin data:",
+        error.response?.data || error
+      );
     } finally {
       setLoading(false);
     }
   }
+
+  // ======================================================
+  // FORM CHANGE
+  // ======================================================
 
   function handleFormChange(
     e: React.ChangeEvent<
@@ -127,6 +170,10 @@ function AdminDashboard() {
     }));
   }
 
+  // ======================================================
+  // CREATE EVENT
+  // ======================================================
+
   async function handleCreateEvent(
     e: React.FormEvent<HTMLFormElement>
   ) {
@@ -140,21 +187,31 @@ function AdminDashboard() {
         location: formData.location,
         category: formData.category,
         totalSeats: Number(formData.totalSeats),
-        ticketPrice: Number(formData.ticketPrice),
+        price: Number(formData.ticketPrice),
         image: formData.image,
       });
 
       setShowEventForm(false);
+
       setFormData(initialFormData);
 
       await fetchData();
     } catch (error: any) {
+      console.error(
+        "Create event error:",
+        error.response?.data || error
+      );
+
       alert(
         error.response?.data?.message ||
           "Error creating event"
       );
     }
   }
+
+  // ======================================================
+  // DELETE EVENT
+  // ======================================================
 
   async function handleDeleteEvent(id: string) {
     const confirmed = window.confirm(
@@ -170,6 +227,11 @@ function AdminDashboard() {
 
       await fetchData();
     } catch (error: any) {
+      console.error(
+        "Delete event error:",
+        error.response?.data || error
+      );
+
       alert(
         error.response?.data?.message ||
           "Error deleting event"
@@ -177,27 +239,15 @@ function AdminDashboard() {
     }
   }
 
-  async function handleConfirmBooking(
-    id: string,
-    paymentStatus: "paid" | "not_paid"
+  // ======================================================
+  // CANCEL BOOKING
+  // ======================================================
+
+  async function handleCancelBooking(
+    id: string
   ) {
-    try {
-      await api.put(`/bookings/${id}/confirm`, {
-        paymentStatus,
-      });
-
-      await fetchData();
-    } catch (error: any) {
-      alert(
-        error.response?.data?.message ||
-          "Error confirming booking"
-      );
-    }
-  }
-
-  async function handleCancelBooking(id: string) {
     const confirmed = window.confirm(
-      "Cancel this user's booking request?"
+      "Are you sure you want to cancel this booking?"
     );
 
     if (!confirmed) {
@@ -205,16 +255,27 @@ function AdminDashboard() {
     }
 
     try {
-      await api.delete(`/bookings/${id}`);
+      await api.patch(
+        `/bookings/admin/${id}/cancel`
+      );
 
       await fetchData();
     } catch (error: any) {
+      console.error(
+        "Cancel booking error:",
+        error.response?.data || error
+      );
+
       alert(
         error.response?.data?.message ||
           "Error cancelling booking"
       );
     }
   }
+
+  // ======================================================
+  // LOADING
+  // ======================================================
 
   if (authLoading || loading) {
     return (
@@ -224,17 +285,22 @@ function AdminDashboard() {
     );
   }
 
+  // ======================================================
+  // SECURITY CHECK
+  // ======================================================
+
   if (!user || user.role !== "admin") {
     return null;
   }
 
+  // ======================================================
+  // STATISTICS
+  // ======================================================
+
   const totalRevenue = bookings.reduce(
     (sum, booking) => {
-      if (
-        booking.paymentStatus === "paid" &&
-        booking.status === "confirmed"
-      ) {
-        return sum + booking.amount;
+      if (booking.status === "confirmed") {
+        return sum + booking.totalPrice;
       }
 
       return sum;
@@ -242,25 +308,40 @@ function AdminDashboard() {
     0
   );
 
-  const paidClients = new Set(
+  const confirmedClients = new Set(
     bookings
       .filter(
         (booking) =>
-          booking.paymentStatus === "paid" &&
           booking.status === "confirmed"
       )
-      .map((booking) => booking.userId?._id)
+      .map(
+        (booking) =>
+          booking.user?._id
+      )
       .filter(Boolean)
   ).size;
 
-  const pendingRequests = bookings.filter(
-    (booking) => booking.status === "pending"
+  const confirmedBookings = bookings.filter(
+    (booking) =>
+      booking.status === "confirmed"
   ).length;
 
-  return (
-    <div className="max-w-7xl mx-auto">
+  const cancelledBookings = bookings.filter(
+    (booking) =>
+      booking.status === "cancelled"
+  ).length;
 
-      {/* Header */}
+  // ======================================================
+  // UI
+  // ======================================================
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 py-8">
+
+      {/* ==================================================
+          HEADER
+      ================================================== */}
+
       <div className="bg-black text-white rounded-2xl p-6 sm:p-8 mb-8 shadow-lg flex flex-col md:flex-row justify-between items-center gap-6 text-center md:text-left">
 
         <div>
@@ -269,13 +350,15 @@ function AdminDashboard() {
           </h1>
 
           <p className="text-gray-300">
-            Manage events and manually confirm bookings.
+            Manage events and bookings.
           </p>
         </div>
 
         <button
           onClick={() =>
-            setShowEventForm((previous) => !previous)
+            setShowEventForm(
+              (previous) => !previous
+            )
           }
           className="w-full md:w-auto bg-white text-black font-bold py-3 px-6 rounded-lg hover:bg-gray-100 transition shadow-md"
         >
@@ -283,71 +366,77 @@ function AdminDashboard() {
             ? "Cancel Creation"
             : "+ Create New Event"}
         </button>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-
-        {/* Revenue */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">
-              Total Revenue
-            </p>
-
-            <h3 className="text-3xl font-black text-green-600">
-              ₹{totalRevenue}
-            </h3>
-          </div>
-
-          <div className="w-12 h-12 bg-green-100 text-green-500 rounded-full flex items-center justify-center text-xl font-bold">
-            ₹
-          </div>
-
-        </div>
-
-        {/* Paid clients */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">
-              Paid Clients
-            </p>
-
-            <h3 className="text-3xl font-black text-blue-600">
-              {paidClients}
-            </h3>
-          </div>
-
-          <div className="w-12 h-12 bg-blue-100 text-blue-500 rounded-full flex items-center justify-center text-xl font-bold">
-            👤
-          </div>
-
-        </div>
-
-        {/* Pending */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
-
-          <div>
-            <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-1">
-              Pending Requests
-            </p>
-
-            <h3 className="text-3xl font-black text-yellow-600">
-              {pendingRequests}
-            </h3>
-          </div>
-
-          <div className="w-12 h-12 bg-yellow-100 text-yellow-600 rounded-full flex items-center justify-center text-xl font-bold">
-            ⏳
-          </div>
-
-        </div>
 
       </div>
 
-      {/* Create Event Form */}
+      {/* ==================================================
+          STATISTICS
+      ================================================== */}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
+        {/* REVENUE */}
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+
+          <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-2">
+            Total Revenue
+          </p>
+
+          <h3 className="text-3xl font-black text-green-600">
+            ₹{totalRevenue}
+          </h3>
+
+        </div>
+
+        {/* CLIENTS */}
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+
+          <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-2">
+            Confirmed Clients
+          </p>
+
+          <h3 className="text-3xl font-black text-blue-600">
+            {confirmedClients}
+          </h3>
+
+        </div>
+
+        {/* BOOKINGS */}
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+
+          <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-2">
+            Confirmed Bookings
+          </p>
+
+          <h3 className="text-3xl font-black text-green-600">
+            {confirmedBookings}
+          </h3>
+
+        </div>
+
+        {/* CANCELLED */}
+
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+
+          <p className="text-gray-500 text-sm font-bold uppercase tracking-wider mb-2">
+            Cancelled
+          </p>
+
+          <h3 className="text-3xl font-black text-red-600">
+            {cancelledBookings}
+          </h3>
+
+        </div>
+
+      </div>
+
+      {/* ==================================================
+          CREATE EVENT FORM
+      ================================================== */}
+
       {showEventForm && (
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-8">
 
@@ -447,13 +536,20 @@ function AdminDashboard() {
             </button>
 
           </form>
+
         </div>
       )}
 
-      {/* Main content */}
+      {/* ==================================================
+          MAIN CONTENT
+      ================================================== */}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-        {/* Events */}
+        {/* ==================================================
+            EVENTS
+        ================================================== */}
+
         <div>
 
           <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-3">
@@ -463,6 +559,7 @@ function AdminDashboard() {
             </span>
 
             All Events
+
           </h2>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -503,13 +600,19 @@ function AdminDashboard() {
                           {event.totalSeats} seats
                         </span>
 
+                        <span>
+                          ₹{event.price}
+                        </span>
+
                       </div>
 
                     </div>
 
                     <button
                       onClick={() =>
-                        handleDeleteEvent(event._id)
+                        handleDeleteEvent(
+                          event._id
+                        )
                       }
                       className="w-full sm:w-auto text-red-500 hover:text-white hover:bg-red-500 border border-red-200 px-4 py-2 rounded-lg text-sm font-bold transition"
                     >
@@ -524,18 +627,23 @@ function AdminDashboard() {
             </ul>
 
           </div>
+
         </div>
 
-        {/* Bookings */}
+        {/* ==================================================
+            BOOKINGS
+        ================================================== */}
+
         <div>
 
           <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-3">
 
-            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-yellow-100 text-yellow-700 text-sm font-bold">
+            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">
               {bookings.length}
             </span>
 
-            Booking Requests
+            Bookings
+
           </h2>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -555,115 +663,123 @@ function AdminDashboard() {
                   <li
                     key={booking._id}
                     className={`p-6 border-l-4 ${
-                      booking.status === "pending"
-                        ? "border-l-yellow-400"
-                        : booking.status === "confirmed"
+                      booking.status ===
+                      "confirmed"
                         ? "border-l-green-400"
                         : "border-l-red-400"
                     }`}
                   >
 
-                    <div className="flex justify-between items-start mb-3">
+                    {/* BOOKING HEADER */}
+
+                    <div className="flex justify-between items-start mb-4 gap-4">
 
                       <h4 className="font-bold text-gray-900 text-lg">
-                        {booking.eventId?.title ||
+                        {booking.event?.title ||
                           "Deleted Event"}
                       </h4>
 
-                      <div className="flex flex-col gap-1 items-end">
-
-                        <span className="px-2 py-1 text-[10px] font-black rounded uppercase bg-gray-100">
-                          {booking.status}
-                        </span>
-
-                        <span className="px-2 py-1 text-[10px] font-black rounded uppercase bg-gray-100">
-                          {booking.paymentStatus.replace(
-                            "_",
-                            " "
-                          )}
-                        </span>
-
-                      </div>
+                      <span
+                        className={`px-2 py-1 text-[10px] font-black rounded uppercase ${
+                          booking.status ===
+                          "confirmed"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {booking.status}
+                      </span>
 
                     </div>
 
-                    <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-100 text-sm">
+                    {/* BOOKING DETAILS */}
 
-                      <p className="text-gray-700 mb-1">
-                        <strong>User:</strong>{" "}
-                        {booking.userId?.name || "Unknown"}
+                    <div className="bg-gray-50 rounded-lg p-4 mb-4 border border-gray-100 text-sm">
+
+                      <p className="text-gray-700 mb-2">
+                        <strong>
+                          User:
+                        </strong>{" "}
+                        {booking.user?.name ||
+                          "Unknown"}
                       </p>
 
-                      <p className="text-gray-700 mb-1">
-                        <strong>Email:</strong>{" "}
-                        {booking.userId?.email || "Unknown"}
+                      <p className="text-gray-700 mb-2">
+                        <strong>
+                          Email:
+                        </strong>{" "}
+                        {booking.user?.email ||
+                          "Unknown"}
                       </p>
 
-                      <p className="text-gray-700 mb-1">
-                        <strong>Amount:</strong>{" "}
-                        {booking.amount === 0
+                      <p className="text-gray-700 mb-2">
+                        <strong>
+                          Tickets:
+                        </strong>{" "}
+                        {booking.quantity}
+                      </p>
+
+                      <p className="text-gray-700 mb-2">
+                        <strong>
+                          Ticket Price:
+                        </strong>{" "}
+                        ₹{booking.ticketPrice}
+                      </p>
+
+                      <p className="text-gray-700 mb-2">
+                        <strong>
+                          Total:
+                        </strong>{" "}
+                        {booking.totalPrice === 0
                           ? "Free"
-                          : `₹${booking.amount}`}
+                          : `₹${booking.totalPrice}`}
                       </p>
 
-                      <p className="text-gray-700 mb-1">
-                        <strong>Date:</strong>{" "}
+                      <p className="text-gray-700">
+                        <strong>
+                          Booked:
+                        </strong>{" "}
                         {new Date(
-                          booking.bookedAt
+                          booking.createdAt
                         ).toLocaleString()}
                       </p>
 
-                      {booking.eventId && (
-                        <p className="text-gray-700 mt-2 pt-2 border-t border-gray-200">
-                          <strong>Seats:</strong>{" "}
-                          {booking.eventId.availableSeats}{" "}
-                          remaining of{" "}
-                          {booking.eventId.totalSeats}
+                      {booking.event && (
+                        <p className="text-gray-700 mt-3 pt-3 border-t border-gray-200">
+                          <strong>
+                            Event:
+                          </strong>{" "}
+                          {booking.event.title}
                         </p>
                       )}
 
                     </div>
 
-                    {booking.status === "pending" && (
+                    {/* CANCEL BUTTON */}
 
-                      <div className="flex flex-wrap gap-2">
+                    {booking.status ===
+                      "confirmed" && (
 
-                        <button
-                          onClick={() =>
-                            handleConfirmBooking(
-                              booking._id,
-                              "paid"
-                            )
-                          }
-                          className="flex-1 min-w-[120px] bg-green-50 text-green-700 hover:bg-green-600 hover:text-white border border-green-200 text-xs font-bold py-2.5 px-3 rounded-lg"
-                        >
-                          ✓ Approve as Paid
-                        </button>
+                      <button
+                        onClick={() =>
+                          handleCancelBooking(
+                            booking._id
+                          )
+                        }
+                        className="w-full bg-red-50 text-red-600 hover:bg-red-500 hover:text-white border border-red-200 text-sm font-bold py-3 px-4 rounded-lg transition"
+                      >
+                        Cancel Booking
+                      </button>
 
-                        <button
-                          onClick={() =>
-                            handleConfirmBooking(
-                              booking._id,
-                              "not_paid"
-                            )
-                          }
-                          className="flex-1 min-w-[120px] bg-gray-50 text-gray-700 hover:bg-gray-800 hover:text-white border border-gray-200 text-xs font-bold py-2.5 px-3 rounded-lg"
-                        >
-                          ✓ Approve Undecided
-                        </button>
+                    )}
 
-                        <button
-                          onClick={() =>
-                            handleCancelBooking(
-                              booking._id
-                            )
-                          }
-                          className="w-[80px] bg-red-50 text-red-600 hover:bg-red-500 hover:text-white border border-red-200 text-xs font-bold py-2.5 px-3 rounded-lg"
-                        >
-                          ✕ Reject
-                        </button>
+                    {booking.status ===
+                      "cancelled" && (
 
+                      <div className="text-center text-red-500 bg-red-50 border border-red-100 rounded-lg py-3 font-semibold">
+                        Booking Cancelled
                       </div>
+
                     )}
 
                   </li>
@@ -674,9 +790,11 @@ function AdminDashboard() {
             </ul>
 
           </div>
+
         </div>
 
       </div>
+
     </div>
   );
 }

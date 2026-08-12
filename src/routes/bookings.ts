@@ -1,6 +1,5 @@
 import { Router } from "express";
 
-// Import booking controllers
 import {
   createBooking,
   getMyBookings,
@@ -8,15 +7,10 @@ import {
   cancelBooking,
   getAllBookings,
   adminCancelBooking,
-} from "../controllers/bookings.ts";
+} from "../controllers/bookings.js";
 
-// Authentication middleware
-// Makes sure the user is logged in.
-import { verifyJWT } from "../middlewares/verifyjwt.ts";
-
-// Admin middleware
-// Makes sure the logged-in user has role = "admin".
-import { verifyAdmin } from "../middlewares/verifyAdmin.ts";
+import { verifyJWT } from "../middlewares/verifyjwt.js";
+import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 
 const router = Router();
 
@@ -24,50 +18,92 @@ const router = Router();
 // USER ROUTES
 // ======================================================
 
-// Book an event
+// ------------------------------------------------------
+// Book event
 //
 // POST /api/bookings/:eventId
 //
-// Example:
-// POST /api/bookings/66abc123
-//
-// Only logged-in users can book.
-router.post("/:eventId", verifyJWT, createBooking);
+// Body:
+// {
+//   quantity: 1
+// }
+// ------------------------------------------------------
 
-// Get all bookings belonging to the logged-in user
+router.post(
+  "/:eventId",
+  verifyJWT,
+  createBooking,
+);
+
+
+// ------------------------------------------------------
+// Get my bookings
 //
 // GET /api/bookings/my
-//
-// Only logged-in users can access their bookings.
-router.get("/my", verifyJWT, getMyBookings);
+// ------------------------------------------------------
 
-// Get a specific booking
+router.get(
+  "/my",
+  verifyJWT,
+  getMyBookings,
+);
+
+
+// ------------------------------------------------------
+// Get one booking
 //
 // GET /api/bookings/:id
-//
-// The controller should make sure the booking
-// belongs to the logged-in user.
-router.get("/:id", verifyJWT, getBookingById);
+// ------------------------------------------------------
 
-// Cancel a booking
+router.get(
+  "/:id",
+  verifyJWT,
+  getBookingById,
+);
+
+
+// ------------------------------------------------------
+// Cancel own booking
 //
 // PATCH /api/bookings/:id/cancel
-//
-// Only the user who owns the booking should be
-// allowed to cancel it.
-router.patch("/:id/cancel", verifyJWT, cancelBooking);
+// ------------------------------------------------------
+
+router.patch(
+  "/:id/cancel",
+  verifyJWT,
+  cancelBooking,
+);
+
 
 // ======================================================
 // ADMIN ROUTES
 // ======================================================
 
+// ------------------------------------------------------
 // Get all bookings
 //
 // GET /api/bookings
-//
-// Only admins can see all users' bookings.
-router.get("/", verifyJWT, verifyAdmin, getAllBookings);
+// ------------------------------------------------------
 
-router.patch("/admin/:id/cancel", verifyJWT, verifyAdmin, adminCancelBooking);
+router.get(
+  "/",
+  verifyJWT,
+  verifyAdmin,
+  getAllBookings,
+);
+
+
+// ------------------------------------------------------
+// Admin cancel booking
+//
+// PATCH /api/bookings/admin/:id/cancel
+// ------------------------------------------------------
+
+router.patch(
+  "/admin/:id/cancel",
+  verifyJWT,
+  verifyAdmin,
+  adminCancelBooking,
+);
 
 export default router;
