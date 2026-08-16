@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {  verifyOtp , changePassword, getCurrentUser, logIn, logOut, signUp } from "../controllers/auth.js";
 import { verifyJWT } from "../middlewares/verifyjwt.js";
-import { makeAdmin } from "../controllers/makeadmin.ts";
-import{makeUser } from "../controllers/makeuser.ts"
-import { verifyAdmin } from "../middlewares/verifyAdmin.ts";
+import { makeAdmin } from "../controllers/makeadmin.js";
+import{makeUser } from "../controllers/makeuser.js"
+import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 
 const router = Router();
 
