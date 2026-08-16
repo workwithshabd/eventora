@@ -1,7 +1,5 @@
 import type {
-  Request,
-  Response,
-  NextFunction,
+  RequestHandler,
 } from "express";
 
 import jwt from "jsonwebtoken";
@@ -11,10 +9,10 @@ interface JwtPayload {
   _id: string;
 }
 
-export const verifyJWT = async (
-  req: Request,
-  res: Response,
-  next: NextFunction,
+export const verifyJWT: RequestHandler = async (
+  req,
+  res,
+  next,
 ) => {
   try {
     const token = req.cookies?.accessToken;
@@ -56,8 +54,9 @@ export const verifyJWT = async (
       });
     }
 
-    const currentUser = await User.findById(decoded._id)
-      .select("-password -refreshToken");
+    const currentUser = await User.findById(
+      decoded._id,
+    ).select("-password -refreshToken");
 
     if (!currentUser) {
       console.log("User from token not found");
@@ -68,13 +67,19 @@ export const verifyJWT = async (
       });
     }
 
-    console.log("Authenticated user:", currentUser.email);
+    console.log(
+      "Authenticated user:",
+      currentUser.email,
+    );
 
     req.user = currentUser;
 
     next();
   } catch (error) {
-    console.error("JWT verification failed:", error);
+    console.error(
+      "JWT verification failed:",
+      error,
+    );
 
     return res.status(401).json({
       success: false,

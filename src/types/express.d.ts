@@ -1,11 +1,11 @@
-import  type { IUser } from "../models/user.js"
+import type { IUser } from "../models/user.js";
 
-declare global{
-    namespace Express {
-        interface Request {
-            user?: IUser;
-        }
+declare global {
+  namespace Express {
+    interface Request {
+      user?: IUser;
     }
+  }
 }
 
-export{}
+export {};

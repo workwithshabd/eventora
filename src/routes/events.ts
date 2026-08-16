@@ -6,7 +6,7 @@ import {
   createEvent,
   updateEvent,
   deleteEvent,
-} from "../controllers/event";
+} from "../controllers/event.ts";
 
 import { verifyJWT } from "../middlewares/verifyjwt.ts";
 import { verifyAdmin } from "../middlewares/verifyAdmin.ts";

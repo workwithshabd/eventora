@@ -4,12 +4,6 @@ import user from "../models/user.js";
 import bcrypt from "bcrypt";
 import Otp from "../models/otp.ts";
 
-type AuthenticatedRequest = Request & {
-  user?: {
-    _id: string;
-    [key: string]: unknown;
-  };
-};
 
 const cookieOptions = {
   httpOnly: true,
@@ -402,7 +396,7 @@ export const logIn = async (req: Request, res: Response) => {
   }
 };
 
-export const logOut = async (req: AuthenticatedRequest, res: Response) => {
+export const logOut = async (req: Request, res: Response) => {
   try {
     const userId = req.user!._id;
 
@@ -435,7 +429,7 @@ export const logOut = async (req: AuthenticatedRequest, res: Response) => {
   }
 };
 
-export const changePassword = async (req: AuthenticatedRequest, res: Response) => {
+export const changePassword = async (req: Request, res: Response) => {
   const { oldPassword, newPassword } = req.body;
 
   if (!oldPassword || !newPassword) {
@@ -477,7 +471,7 @@ export const changePassword = async (req: AuthenticatedRequest, res: Response) =
 };
 
 export const getCurrentUser = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
 ) => {
   try {
