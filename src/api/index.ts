@@ -5,7 +5,7 @@ let dbConnected = false;
 
 export default async function handler(
   req: any,
-  res: any
+  res: any,
 ) {
   try {
     if (!dbConnected) {
@@ -15,11 +15,14 @@ export default async function handler(
 
     return app(req, res);
   } catch (error) {
-    console.error("API error:", error);
+    console.error("API FUNCTION ERROR:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Internal server error",
     });
   }
 }
