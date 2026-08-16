@@ -3,10 +3,7 @@ import connectDB from "../db/index.js";
 
 let dbConnected = false;
 
-export default async function handler(
-  req: any,
-  res: any,
-) {
+export default async function handler(req: any, res: any) {
   try {
     if (!dbConnected) {
       await connectDB();
