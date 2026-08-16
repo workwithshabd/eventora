@@ -1,28 +1,10 @@
-import app from "../app.ts";
-import connectDB from "../db/index.ts";
+export default function handler(req: any, res: any) {
+  console.log("VERCEL FUNCTION IS RUNNING");
 
-let dbConnected = false;
-
-export default async function handler(
-  req: any,
-  res: any,
-) {
-  try {
-    if (!dbConnected) {
-      await connectDB();
-      dbConnected = true;
-    }
-
-    return app(req, res);
-  } catch (error) {
-    console.error("API FUNCTION ERROR:", error);
-
-    return res.status(500).json({
-      success: false,
-      message:
-        error instanceof Error
-          ? error.message
-          : "Internal server error",
-    });
-  }
+  return res.status(200).json({
+    success: true,
+    message: "Vercel function works",
+    method: req.method,
+    url: req.url,
+  });
 }
