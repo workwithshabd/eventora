@@ -4,10 +4,20 @@ import user from "../models/user.js";
 import bcrypt from "bcrypt";
 import Otp from "../models/otp.ts";
 
+type AuthenticatedRequest = Request & {
+  user?: {
+    _id: string;
+    [key: string]: unknown;
+  };
+};
+
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
+  sameSite:
+    process.env.NODE_ENV === "production"
+      ? ("none" as const)
+      : ("strict" as const),
 };
 export const signUp = async (req: Request, res: Response) => {
   try {
@@ -392,7 +402,7 @@ export const logIn = async (req: Request, res: Response) => {
   }
 };
 
-export const logOut = async (req: Request, res: Response) => {
+export const logOut = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user!._id;
 
@@ -425,7 +435,7 @@ export const logOut = async (req: Request, res: Response) => {
   }
 };
 
-export const changePassword = async (req: Request, res: Response) => {
+export const changePassword = async (req: AuthenticatedRequest, res: Response) => {
   const { oldPassword, newPassword } = req.body;
 
   if (!oldPassword || !newPassword) {
@@ -466,27 +476,25 @@ export const changePassword = async (req: Request, res: Response) => {
   });
 };
 
-export const getCurrentUser = async ( req: Request,res: Response,) => {
+export const getCurrentUser = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
   try {
     const currentUser = await user
-
       .findById(req.user!._id)
-
       .select("-password -refreshToken");
 
     if (!currentUser) {
       return res.status(404).json({
         success: false,
-
         message: "User not found",
       });
     }
 
     return res.status(200).json({
       success: true,
-
       message: "Current user fetched successfully",
-
       user: currentUser,
     });
   } catch (error) {
@@ -494,7 +502,6 @@ export const getCurrentUser = async ( req: Request,res: Response,) => {
 
     return res.status(500).json({
       success: false,
-
       message: error instanceof Error ? error.message : "Internal server error",
     });
   }
