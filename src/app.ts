@@ -4,7 +4,7 @@ import cookieParser from "cookie-parser";
 
 import router from "./routes/auth.js";
 import eventsRouter from "./routes/events.js";
-import bookingRoutes from "./routes/bookings.ts";
+import bookingRoutes from "./routes/bookings.js";
 
 const app = express();
 

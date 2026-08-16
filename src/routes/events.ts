@@ -6,10 +6,10 @@ import {
   createEvent,
   updateEvent,
   deleteEvent,
-} from "../controllers/event.ts";
+} from "../controllers/event.js";
 
-import { verifyJWT } from "../middlewares/verifyjwt.ts";
-import { verifyAdmin } from "../middlewares/verifyAdmin.ts";
+import { verifyJWT } from "../middlewares/verifyjwt.js";
+import { verifyAdmin } from "../middlewares/verifyAdmin.js";
 
 const eventsRouter = Router();
 

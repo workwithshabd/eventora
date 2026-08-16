@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import Event from "../models/event.ts";
+import Event from "../models/event.js";
 
 // ==========================================
 // GET ALL EVENTS - PUBLIC

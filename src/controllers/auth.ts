@@ -1,8 +1,8 @@
 import type { Request, Response } from "express";
-import { sendAccountEmail } from "../utils/mail.ts";
+import { sendAccountEmail } from "../utils/mail.js";
 import user from "../models/user.js";
 import bcrypt from "bcrypt";
-import Otp from "../models/otp.ts";
+import Otp from "../models/otp.js";
 
 
 const cookieOptions = {
